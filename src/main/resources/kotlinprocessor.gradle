@@ -1,0 +1,119 @@
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
+def applicationId = ""
+
+def getCurrentFlavor() {
+    Gradle gradle = getGradle()
+    String  tskReqStr = gradle.getStartParameter().getTaskRequests().toString()
+
+    Pattern pattern
+
+    if( tskReqStr.contains( "assemble" ) ) // to start ./gradlew assembleRelease to build APK
+        pattern = Pattern.compile("assemble(\\w+)(Release|Debug)")
+    else if( tskReqStr.contains( "bundle" ) ) // to start ./gradlew bundleRelease to build .aab
+        pattern = Pattern.compile("bundle(\\w+)(Release|Debug)")
+    else
+        pattern = Pattern.compile("generate(\\w+)(Release|Debug)")
+
+    Matcher matcher = pattern.matcher( tskReqStr )
+
+    if( matcher.find() )
+        return matcher.group(1).toLowerCase()
+    else
+    {
+        println "NO MATCH FOUND"
+        return ""
+    }
+}
+
+def getCurrentVariant() {
+    Gradle gradle = getGradle()
+    def tskReq = gradle.getStartParameter().getTaskRequests()
+
+    String tskReqStr = tskReq.args[0].toString()
+    tskReqStr = tskReqStr.split(":").last()
+    tskReqStr = tskReqStr.substring(0, tskReqStr.length() - 1)
+
+    if (tskReqStr.contains("assemble"))
+        tskReqStr = tskReqStr.substring("assemble".length(), tskReqStr.length())
+    else
+        tskReqStr = tskReqStr.substring("generate".length(), tskReqStr.length())
+
+    if(tskReqStr == "rt")
+        tskReqStr = "debug"
+
+    return tskReqStr.toLowerCase()
+}
+
+def getCurrentApplicationId() {
+    def currFlavor = getCurrentFlavor()
+
+    def outStr = ''
+    android.productFlavors.all{ flavor ->
+
+        if( flavor.name==currFlavor )
+            outStr=flavor.applicationId
+    }
+
+    return outStr
+}
+
+project.afterEvaluate {
+    project.android.applicationVariants.all { variant ->
+        applicationId = [variant.mergedFlavor.applicationId, variant.buildType.applicationIdSuffix].findAll().join()
+    }
+}
+
+gradle.taskGraph.afterTask { Task task, TaskState state ->
+    if(task.path.contains("process") && task.path.contains("ManifestForPackage"))
+    {
+
+    }
+
+    if(task.path.contains("process") && task.path.contains("Resources")
+            || task.path.contains("iosAppPodInstall")
+            || task.path.contains("runCommonizer"))
+    {
+        def cV = currentVariant
+        if(task.path.contains("iosAppPodInstall")
+                || task.path.contains("runCommonizer")) {
+            cV = "debug"
+        }
+
+            println "${projectDir}"
+            println "Generating LR"
+            def outputType = "debug"
+            if (task.path.contains("Release"))
+                outputType = "release"
+            println "java -jar ${projectDir}/parser.jar 2 ${buildDir}/intermediates/compile_and_runtime_not_namespaced_r_class_jar/" + outputType + "/R.jar ${buildDir}/generated/toppingresource/ " + applicationId + ".R"
+            def os = org.gradle.nativeplatform.platform.internal.DefaultNativePlatform.currentOperatingSystem
+            String[] args = null
+            if (os.toFamilyName().equalsIgnoreCase("windows"))
+                args = ["cmd", "/c", "java -jar ${projectDir}/parser.jar 2 ${buildDir}/intermediates/compile_and_runtime_not_namespaced_r_class_jar/" + outputType + "/R.jar ${buildDir}/generated/toppingresource/ " + applicationId + ".R"]
+            else
+                args = ["zsh", "-c", "java -jar ${projectDir}/parser.jar 2 ${buildDir}/intermediates/compile_and_runtime_not_namespaced_r_class_jar/" + outputType + "/R.jar ${buildDir}/generated/toppingresource/ " + applicationId + ".R"]
+            println args.toString()
+            def proc = args.execute()
+            proc.in.eachLine { line -> println line }
+            //proc.out.eachLine {line -> println line}
+            //proc.err.eachLine {line -> println 'ERROR: ' + line}
+            proc.waitFor()
+
+
+
+            println "Generating View Bindings"
+            String cmd = "java -jar ${projectDir}/viewbinding.jar ${projectDir}/src/ ${buildDir}/generated/toppingviewbinding/ ${buildDir}/intermediates/merged_res_blame_folder/${cV}/out/single/${cV}.json"
+            args = null
+            if(os.toFamilyName().equalsIgnoreCase("windows"))
+                args = ["cmd", "/c", cmd]
+            else
+                args = ["zsh", "-c", cmd]
+            proc = args.execute()
+            proc.in.eachLine {line -> println line}
+            //proc.out.eachLine {line -> println line}
+            proc.err.eachLine {line -> println 'ERROR: ' + line}
+            proc.waitFor()
+
+    }
+}

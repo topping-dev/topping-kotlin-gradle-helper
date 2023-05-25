@@ -1,0 +1,4 @@
+local.properties
+secret.gpg
+.gradle
+build
