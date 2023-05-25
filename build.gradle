@@ -6,7 +6,7 @@ plugins {
 
 ext {
     PUBLISH_GROUP_ID = 'dev.topping.kotlin.gradle'
-    PUBLISH_ARTIFACT_ID = 'topping-kotlin-helper'
+    PUBLISH_ARTIFACT_ID = 'dev.topping.kotlin.gradle.gradle.plugin'
     PUBLISH_VERSION = '0.5.2'
 }
 
